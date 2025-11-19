@@ -1,12 +1,3 @@
-/*!
-
-=========================================================
-* Light Bootstrap Dashboard React - v2.0.1
-=========================================================
-
-… (header left as-is)
-*/
-
 import React from "react";
 import ReactDOM from "react-dom/client";
 import { BrowserRouter, Route, Switch, Redirect } from "react-router-dom";
@@ -20,9 +11,9 @@ import "@fortawesome/fontawesome-free/css/all.min.css";
 import AdminLayout from "layouts/Admin.js";
 import Login from "views/Login";
 
-// 🔐 add these:
 import { AuthProvider } from "./context/AuthProvider";
 import ProtectedRoute from "./components/ProtectedRoute";
+import GuestRoute from "./components/GuestRoute";
 
 const root = ReactDOM.createRoot(document.getElementById("root"));
 
@@ -30,16 +21,21 @@ root.render(
   <AuthProvider>
     <BrowserRouter>
       <Switch>
-        {/* PUBLIC: Login */}
-        <Route path="/login" component={Login} />
+        {/* 🚪 Only guests can visit /login */}
+        <GuestRoute exact path="/login">
+          <Login />
+        </GuestRoute>
 
-        {/* PROTECTED: Admin */}
+        {/* 🔐 All /admin routes are protected */}
         <ProtectedRoute path="/admin">
           <AdminLayout />
         </ProtectedRoute>
 
-        {/* DEFAULT REDIRECT */}
-        <Redirect from="/" to="/login" />
+        {/* 🌐 Default route */}
+        <Route
+          path="/"
+          render={() => <Redirect to="/admin/dashboard" />}
+        />
       </Switch>
     </BrowserRouter>
   </AuthProvider>

@@ -67,7 +67,7 @@ function Login() {
           <div className="card" style={{ borderRadius: "12px" }}>
             <div className="card-header text-center">
               <h4 className="card-title">Login</h4>
-              <p className="card-category">Access Brand Bazaar dashboard</p>
+              <p className="card-category">Access Brand Bazaar BD dashboard</p>
             </div>
 
             <div className="card-body">
@@ -104,7 +104,7 @@ function Login() {
           </div>
 
           <p className="text-center text-light mt-3" style={{ fontSize: "12px" }}>
-            © {new Date().getFullYear()} Brand Bazaar
+            © {new Date().getFullYear()} Brand Bazaar BD
           </p>
         </div>
       </div>

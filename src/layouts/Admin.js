@@ -24,7 +24,7 @@ import Sidebar from "components/Sidebar/Sidebar";
 
 import routes from "routes.js";
 
-import sidebarImage from "assets/img/sidebar-3.jpg";
+import sidebarImage from "assets/img/sidebar-2.jpg";
 
 function Admin() {
   const [image, setImage] = React.useState(sidebarImage);

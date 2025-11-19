@@ -17,6 +17,7 @@
 */
 import Dashboard from "views/Dashboard.js";
 import UserProfile from "views/UserProfile.js";
+import Orders from "views/Orders";
 import Inventory from "views/Inventory";
 import Suppliers from "views/Suppliers";
 import ProductList from "views/ProductList";
@@ -28,12 +29,20 @@ import Notifications from "views/Notifications.js";
 import Upgrade from "views/Upgrade.js";
 
 const dashboardRoutes = [
+  // {
+  //   upgrade: true,
+  //   path: "/upgrade",
+  //   name: "Upgrade to PRO",
+  //   icon: "nc-icon nc-alien-33",
+  //   component: Upgrade,
+  //   layout: "/admin"
+  // },
   {
     upgrade: true,
-    path: "/upgrade",
-    name: "Upgrade to PRO",
-    icon: "nc-icon nc-alien-33",
-    component: Upgrade,
+    path: "/user",
+    name: "User Profile",
+    icon: "nc-icon nc-circle-09",
+    component: UserProfile,
     layout: "/admin"
   },
   {
@@ -44,10 +53,10 @@ const dashboardRoutes = [
     layout: "/admin"
   },
   {
-    path: "/user",
-    name: "User Profile",
-    icon: "nc-icon nc-circle-09",
-    component: UserProfile,
+    path: "/orders",
+    name: "Orders",
+    icon: "nc-icon nc-badge",
+    component: Orders,
     layout: "/admin"
   },
   {
@@ -58,54 +67,54 @@ const dashboardRoutes = [
     layout: "/admin"
   },
   {
-    path: "/supplier",
-    name: "Supplier List",
-    icon: "nc-icon nc-delivery-fast",
-    component: Suppliers,
-    layout: "/admin"
-  },
-  {
     path: "/products",
-    name: "Product List",
+    name: "Products",
     icon: "nc-icon nc-single-copy-04",
     component: ProductList,
     layout: "/admin"
   },
   {
-    path: "/table",
-    name: "Table List",
-    icon: "nc-icon nc-notes",
-    component: TableList,
+    path: "/supplier",
+    name: "Suppliers",
+    icon: "nc-icon nc-delivery-fast",
+    component: Suppliers,
     layout: "/admin"
   },
-  {
-    path: "/typography",
-    name: "Typography",
-    icon: "nc-icon nc-paper-2",
-    component: Typography,
-    layout: "/admin"
-  },
-  {
-    path: "/icons",
-    name: "Icons",
-    icon: "nc-icon nc-atom",
-    component: Icons,
-    layout: "/admin"
-  },
-  {
-    path: "/maps",
-    name: "Maps",
-    icon: "nc-icon nc-pin-3",
-    component: Maps,
-    layout: "/admin"
-  },
-  {
-    path: "/notifications",
-    name: "Notifications",
-    icon: "nc-icon nc-bell-55",
-    component: Notifications,
-    layout: "/admin"
-  }
+  // {
+  //   path: "/table",
+  //   name: "Table List",
+  //   icon: "nc-icon nc-notes",
+  //   component: TableList,
+  //   layout: "/admin"
+  // },
+  // {
+  //   path: "/typography",
+  //   name: "Typography",
+  //   icon: "nc-icon nc-paper-2",
+  //   component: Typography,
+  //   layout: "/admin"
+  // },
+  // {
+  //   path: "/icons",
+  //   name: "Icons",
+  //   icon: "nc-icon nc-atom",
+  //   component: Icons,
+  //   layout: "/admin"
+  // },
+  // {
+  //   path: "/maps",
+  //   name: "Maps",
+  //   icon: "nc-icon nc-pin-3",
+  //   component: Maps,
+  //   layout: "/admin"
+  // },
+  // {
+  //   path: "/notifications",
+  //   name: "Notifications",
+  //   icon: "nc-icon nc-bell-55",
+  //   component: Notifications,
+  //   layout: "/admin"
+  // }
 ];
 
 export default dashboardRoutes;

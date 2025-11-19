@@ -38,6 +38,8 @@
   to {
     -ms-transform: rotate(360deg); } }
 
+
+
 /*           Font Smoothing      */
 body,
 h1, .h1,
@@ -3877,3 +3879,24 @@ License - nucleoapp.com/license/
   position: absolute; }
 
 /*# sourceMappingURL=light-bootstrap-dashboard-react.css.map */
+
+/* Top Products chart – color per product */
+#chartTopProducts .ct-series-a .ct-bar {
+  stroke: #1ba8f5; /* Product #1 */
+}
+
+#chartTopProducts .ct-series-b .ct-bar {
+  stroke: #e74c3c; /* Product #2 */
+}
+
+#chartTopProducts .ct-series-c .ct-bar {
+  stroke: #f1c40f; /* Product #3 */
+}
+
+#chartTopProducts .ct-series-d .ct-bar {
+  stroke: #2ecc71; /* Product #4 */
+}
+
+#chartTopProducts .ct-series-e .ct-bar {
+  stroke: #9b59b6; /* Product #5 */
+}

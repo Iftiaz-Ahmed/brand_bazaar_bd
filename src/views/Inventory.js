@@ -13,7 +13,7 @@ import { supabase } from "createClient";
 import { formatDate } from "../utils/formatDate";
 import * as QRCode from "qrcode";
 
-const COMPANY_NAME = "Brand Bazaar";
+const COMPANY_NAME = "Brand Bazaar BD";
 const COMPANY_LOGO_URL =
   "https://wujdkjvthzqnzbbczykd.supabase.co/storage/v1/object/public/assets/reactlogo.png";
 
@@ -323,6 +323,30 @@ const Inventory = () => {
 
     return finalCarton;
   }
+
+  function handlePrintLabel(url) {
+    if (!url) return;
+
+    const printWindow = window.open("", "_blank", "width=900,height=700");
+    if (!printWindow) return;
+
+    printWindow.document.write(`
+        <html>
+        <head>
+            <title>Print Carton Label</title>
+        </head>
+        <body style="margin:0;display:flex;align-items:center;justify-content:center;">
+            <img
+            src="${url}"
+            style="max-width:100%;max-height:100%;"
+            onload="window.print();window.close();"
+            />
+        </body>
+        </html>
+    `);
+    printWindow.document.close();
+    }
+
 
   // ADD CARTON
   const handleAddCarton = async (e) => {
@@ -788,47 +812,55 @@ const Inventory = () => {
                       <tr key={carton.id}>
                         <td>Carton {carton.id}</td>
                         <td>
-                          {carton.qr_code_url ? (
+                        {carton.qr_code_url ? (
+                            <div style={{ display: "flex", flexDirection: "column", alignItems: "center" }}>
                             <div
-                              onClick={() =>
-                                setSelectedImage(carton.qr_code_url)
-                              }
-                              style={{
+                                onClick={() => setSelectedImage(carton.qr_code_url)}
+                                style={{
                                 width: "140px",
                                 height: "140px",
                                 borderRadius: "12px",
                                 overflow: "hidden",
-                                boxShadow:
-                                  "0 4px 12px rgba(0,0,0,0.1)",
+                                boxShadow: "0 4px 12px rgba(0,0,0,0.1)",
                                 background: "#fff",
                                 cursor: "zoom-in",
-                              }}
+                                }}
                             >
-                              <img
+                                <img
                                 src={carton.qr_code_url}
                                 alt={`Carton ${carton.id} Label`}
                                 style={{
-                                  width: "110%",
-                                  height: "110%",
-                                  objectFit: "cover",
-                                  objectPosition: "right center"
+                                    width: "110%",
+                                    height: "110%",
+                                    objectFit: "cover",
+                                    objectPosition: "right center"
                                 }}
-                              />
+                                />
                             </div>
-                          ) : (
+
+                            {/* 🔹 Print button under the label */}
                             <Button
-                              size="sm"
-                              variant="secondary"
-                              onClick={() =>
-                                handleGenerateQrForCarton(carton)
-                              }
-                              disabled={qrBusyId === carton.id}
+                                size="sm"
+                                variant="outline-info"
+                                className="mt-2"
+                                onClick={(e) => {
+                                e.stopPropagation(); // don't trigger zoom
+                                handlePrintLabel(carton.qr_code_url);
+                                }}
                             >
-                              {qrBusyId === carton.id
-                                ? "Generating..."
-                                : "Get QR Code"}
+                                Print Label
                             </Button>
-                          )}
+                            </div>
+                        ) : (
+                            <Button
+                            size="sm"
+                            variant="secondary"
+                            onClick={() => handleGenerateQrForCarton(carton)}
+                            disabled={qrBusyId === carton.id}
+                            >
+                            {qrBusyId === carton.id ? "Generating..." : "Get QR Code"}
+                            </Button>
+                        )}
                         </td>
                         <td>{getProductName(carton.product_id)}</td>
                         <td>{carton.units_remaining}</td>
