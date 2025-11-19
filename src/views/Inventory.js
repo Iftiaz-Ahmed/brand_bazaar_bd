@@ -75,7 +75,7 @@ const Inventory = () => {
     product_id: "",
     status: "received",
     units_remaining: "",
-    statusDate: "", // dynamic date tied to status
+    statusDate: "", // dynamic date tied to statuss
     supplier_id: "",
     is_open: "no", // "yes" | "no"
   });
