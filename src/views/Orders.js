@@ -59,6 +59,156 @@ function wrapText(ctx, text, x, y, maxWidth, lineHeight) {
   return y;
 }
 
+// unit-price helper usable everywhere
+function getUnitPriceForProductFromList(products, productId) {
+  const p = products.find((x) => x.id === productId);
+  // adjust the key "unit_selling_price" if your column is named differently
+  return p?.unit_selling_price ? Number(p.unit_selling_price) : 0;
+}
+
+/**
+ * Select cartons for "Auto" mode:
+ * - Input: all cartons for a product (status = received, units_remaining > 0)
+ * - Goal: pick the FEWEST cartons whose total units >= desiredUnits
+ * - Strategy: greedy, pick largest cartons first
+ *
+ * Returns:
+ *   { selectedCartons: Carton[], totalUnits: number } or null if not enough stock
+ */
+function selectCartonsForAuto(cartonsForProduct, desiredUnits) {
+  if (!Array.isArray(cartonsForProduct) || cartonsForProduct.length === 0) {
+    return null;
+  }
+
+  // sort by units_remaining DESC, then by id ASC
+  const sorted = [...cartonsForProduct].sort((a, b) => {
+    const ua = Number(a.units_remaining || 0);
+    const ub = Number(b.units_remaining || 0);
+    if (ub !== ua) return ub - ua;
+    return a.id - b.id;
+  });
+
+  let totalAvailable = 0;
+  sorted.forEach((c) => {
+    totalAvailable += Number(c.units_remaining || 0);
+  });
+
+  if (totalAvailable < desiredUnits) {
+    return null;
+  }
+
+  const selectedCartons = [];
+  let sum = 0;
+
+  for (const c of sorted) {
+    if (sum >= desiredUnits) break;
+    const units = Number(c.units_remaining || 0);
+    if (units <= 0) continue;
+    selectedCartons.push(c);
+    sum += units;
+  }
+
+  if (sum < desiredUnits) {
+    return null;
+  }
+
+  return { selectedCartons, totalUnits: sum };
+}
+
+/**
+ * Expand rows that are in "auto" mode into multiple "carton" items.
+ *
+ * - User selects a carton + desired quantity in UNITS.
+ * - We look at ALL cartons for that product (status="received", units_remaining>0).
+ * - We pick the FEWEST cartons whose total units >= desired.
+ * - Then we create `mode: "carton"` rows for each carton we select.
+ *
+ * Example:
+ *   Carton units: [50,72,72,72], desired=216
+ *   => we pick the three 72s (total 216), NOT all four cartons.
+ *
+ * Other rows (carton / loose) are passed through unchanged.
+ */
+function expandAutoItems(rows, cartons, products) {
+  const expanded = [];
+
+  rows.forEach((r) => {
+    if (r.mode !== "auto") {
+      expanded.push(r);
+      return;
+    }
+
+    if (!r.carton_id) {
+      throw new Error("Auto items must have a carton selected.");
+    }
+
+    const desired = Number(r.quantity || 0);
+    if (!desired || desired <= 0) {
+      throw new Error("Auto items must have a valid quantity.");
+    }
+
+    const baseCarton = cartons.find(
+      (c) => c.id === Number(r.carton_id)
+    );
+    if (!baseCarton) {
+      throw new Error(`Selected carton #${r.carton_id} not found.`);
+    }
+
+    const productId = baseCarton.product_id || r.product_id;
+    if (!productId) {
+      throw new Error(
+        `Product not found for selected carton #${baseCarton.id}.`
+      );
+    }
+
+    const unitPrice =
+      r.unit_price != null
+        ? Number(r.unit_price)
+        : getUnitPriceForProductFromList(products, productId);
+
+    const cartonsForProduct = cartons.filter(
+      (c) =>
+        c.product_id === productId &&
+        c.status === "received" &&
+        Number(c.units_remaining || 0) > 0
+    );
+
+    const totalAvailable = cartonsForProduct.reduce(
+      (sum, c) => sum + Number(c.units_remaining || 0),
+      0
+    );
+
+    if (totalAvailable < desired) {
+      throw new Error(
+        `Not enough cartons available for this product. Requested ${desired} units, but only ${totalAvailable} units are available across all cartons.`
+      );
+    }
+
+    const selection = selectCartonsForAuto(cartonsForProduct, desired);
+    if (!selection) {
+      throw new Error(
+        `Not enough cartons available for this product. Requested ${desired} units, but available stock cannot satisfy it.`
+      );
+    }
+
+    selection.selectedCartons.forEach((c) => {
+      const qty = Number(c.units_remaining || 0);
+
+      expanded.push({
+        uid: Date.now() + Math.random(),
+        mode: "carton",
+        carton_id: c.id,
+        product_id: productId,
+        quantity: qty, // full carton => unopened
+        unit_price: unitPrice,
+        line_total: qty * unitPrice,
+      });
+    });
+  });
+
+  return expanded;
+}
+
 // 🔥 draw invoice as an image & return dataURL
 async function generateInvoiceImage(order, items, products) {
   const width = 900;
@@ -273,7 +423,7 @@ async function createOrUpdateInvoice(orderRow, items, products) {
 }
 
 /**
- * 🔹 Order items editor (cartons / loose) – kept outside main component
+ * 🔹 Order items editor (cartons / loose / auto) – kept outside main component
  */
 const OrderItemsEditor = ({
   items,
@@ -282,8 +432,14 @@ const OrderItemsEditor = ({
   cartons,
   getCartonLabel,
   getUnitPriceForProduct,
+  isEdit = false,
 }) => {
   const addRow = () => {
+    if (items.length >= 25) {
+      alert("You cannot add more than 25 items in a single order.");
+      return;
+    }
+
     setItems((prev) => [
       ...prev,
       {
@@ -311,14 +467,22 @@ const OrderItemsEditor = ({
   };
 
   const handleModeChange = (uid, newMode) => {
-    updateRow(uid, () => ({
-      mode: newMode,
-      carton_id: "",
-      product_id: null,
-      quantity: 0,
-      unit_price: 0,
-      line_total: 0,
-    }));
+    setItems((prev) => {
+      const updated = prev.map((row) =>
+        row.uid === uid
+          ? {
+              ...row,
+              mode: newMode,
+              carton_id: "",
+              product_id: null,
+              quantity: 0,
+              unit_price: 0,
+              line_total: 0,
+            }
+          : row
+      );
+      return updated;
+    });
   };
 
   const handleCartonChange = (uid, cartonIdStr) => {
@@ -341,9 +505,12 @@ const OrderItemsEditor = ({
 
       if (row.mode === "carton") {
         qty = Number(carton.units_remaining || 0);
-      } else {
+      } else if (row.mode === "loose") {
         // loose default 1
         qty = 1;
+      } else if (row.mode === "auto") {
+        // in auto, user will set quantity manually; keep 0 for now
+        qty = 0;
       }
 
       const lineTotal = qty * unitPrice;
@@ -362,6 +529,22 @@ const OrderItemsEditor = ({
     const qtyNum = Number(value) || 0;
 
     updateRow(uid, (row) => {
+      const mode = row.mode || "carton";
+
+      if (mode === "auto") {
+        // For auto, just store requested total qty in units.
+        let clamped = qtyNum;
+        if (clamped < 1) clamped = 1;
+
+        const unitPrice = Number(row.unit_price || 0);
+        const lineTotal = clamped * unitPrice;
+
+        return {
+          quantity: clamped,
+          line_total: lineTotal,
+        };
+      }
+
       if (!row.carton_id) {
         return { quantity: 0, line_total: 0 };
       }
@@ -397,8 +580,8 @@ const OrderItemsEditor = ({
   };
 
   const availableCartonsFor = (mode) => {
-    if (mode === "carton") {
-      // full cartons: received only
+    if (mode === "carton" || mode === "auto") {
+      // full / auto cartons: received only
       return cartons.filter((c) => c.status === "received");
     }
     // loose: received + open
@@ -460,6 +643,60 @@ const OrderItemsEditor = ({
                   ? Number(currentCarton.units_remaining || 0)
                   : undefined;
 
+              // Max + helper for auto
+              let autoMaxQty;
+              let autoHelper = "";
+
+              if (mode === "auto") {
+                const productId =
+                  currentCarton?.product_id || row.product_id;
+                if (productId) {
+                  const cartonsForProduct = cartons
+                    .filter(
+                      (c) =>
+                        c.product_id === productId &&
+                        c.status === "received" &&
+                        Number(c.units_remaining || 0) > 0
+                    )
+                    .sort((a, b) => a.id - b.id);
+
+                  autoMaxQty = cartonsForProduct.reduce(
+                    (sum, c) => sum + Number(c.units_remaining || 0),
+                    0
+                  );
+
+                  const desired = Number(row.quantity || 0);
+
+                  if (desired > 0 && cartonsForProduct.length > 0) {
+                    const selection = selectCartonsForAuto(
+                      cartonsForProduct,
+                      desired
+                    );
+
+                    if (selection) {
+                      const neededCount =
+                        selection.selectedCartons.length;
+                      const totalUnits = selection.totalUnits;
+
+                      // Option A-style text (current behavior)
+                      autoHelper = `Will use ${neededCount} carton${
+                        neededCount > 1 ? "s" : ""
+                      } = ${totalUnits} units`;
+
+                      // Option B (with IDs) – commented for future:
+                      // const usedIds = selection.selectedCartons
+                      //   .map((c) => c.id)
+                      //   .join(", ");
+                      // autoHelper = `Will use ${neededCount} carton${
+                      //   neededCount > 1 ? "s" : ""
+                      // } (IDs: ${usedIds}) = ${totalUnits} units`;
+                    } else if (autoMaxQty > 0) {
+                      autoHelper = `Not enough stock to fully satisfy ${desired} units. Max across cartons: ${autoMaxQty} units.`;
+                    }
+                  }
+                }
+              }
+
               return (
                 <tr key={row.uid}>
                   <td>
@@ -472,6 +709,7 @@ const OrderItemsEditor = ({
                     >
                       <option value="carton">Carton</option>
                       <option value="loose">Loose</option>
+                      <option value="auto">Auto</option>
                     </Form.Control>
                   </td>
                   <td>
@@ -503,17 +741,33 @@ const OrderItemsEditor = ({
                         <Form.Control
                           type="number"
                           min={1}
-                          max={maxQty}
+                          {...(!isEdit && mode === "loose" && typeof maxQty === "number"
+                            ? { max: maxQty }
+                            : {})}
                           value={row.quantity || ""}
                           onChange={(e) =>
                             handleQtyChange(row.uid, e.target.value)
                           }
                         />
-                        {typeof maxQty === "number" && (
-                          <small className="text-muted">
-                            Max: {maxQty}
+                        {!isEdit &&
+                          mode === "loose" &&
+                          typeof maxQty === "number" && (
+                            <small className="text-muted d-block">
+                              Max: {maxQty}
+                            </small>
+                          )}
+                        {mode === "auto" && autoHelper && (
+                          <small className="text-muted d-block">
+                            {autoHelper}
                           </small>
                         )}
+                        {mode === "auto" &&
+                          typeof autoMaxQty === "number" &&
+                          autoMaxQty > 0 && (
+                            <small className="text-muted d-block">
+                              Max across cartons: {autoMaxQty}
+                            </small>
+                          )}
                       </>
                     )}
                   </td>
@@ -577,11 +831,11 @@ const Orders = () => {
     status: "Created",
   });
 
-  // create-order items (per-item carton/loose)
+  // create-order items (per-item carton/loose/auto)
   const [items, setItems] = useState([
     {
       uid: Date.now(),
-      mode: "carton", // "carton" | "loose"
+      mode: "carton", // "carton" | "loose" | "auto"
       carton_id: "",
       product_id: null,
       quantity: 0,
@@ -646,11 +900,8 @@ const Orders = () => {
     return `Carton ${carton.id} - ${getProductName(carton.product_id)}`;
   };
 
-  const getUnitPriceForProduct = (productId) => {
-    const p = products.find((x) => x.id === productId);
-    // adjust the key "unit_selling_price" if your column is named differently
-    return p?.unit_selling_price ? Number(p.unit_selling_price) : 0;
-  };
+  const getUnitPriceForProduct = (productId) =>
+    getUnitPriceForProductFromList(products, productId);
 
   // 🔹 NEW: helper to show carton IDs in orders list
   const getOrderCartonList = (order) => {
@@ -731,18 +982,32 @@ const Orders = () => {
     setCustomer((prev) => ({ ...prev, [name]: value }));
   };
 
-  const validateItems = (rows) => {
+  const validateItems = (rows, isEdit = false) => {
     if (rows.length === 0) {
       return "Please add at least one item.";
     }
+    if (rows.length > 25) {
+      return "You cannot add more than 25 items in a single order.";
+    }
+
     for (const r of rows) {
-      if (!r.carton_id) return "Each item must have a carton selected.";
-      if (r.mode === "loose" && (!r.quantity || r.quantity <= 0)) {
-        return "Loose items must have a valid quantity.";
+      if (!r.carton_id)
+        return "Each item must have a carton selected.";
+
+      // ❌ REMOVE quantity requirement on edit
+      if (!isEdit) {
+        if (
+          (r.mode === "loose" || r.mode === "auto") &&
+          (!r.quantity || r.quantity <= 0)
+        ) {
+          return "Loose/Auto items must have a valid quantity.";
+        }
       }
     }
+
     return null;
   };
+
 
   const applyLooseAdjustments = async (adjustments) => {
     // adjustments: { [cartonId]: deltaUnits }
@@ -801,8 +1066,7 @@ const Orders = () => {
       return;
     }
 
-
-    const itemErr = validateItems(items);
+    const itemErr = validateItems(items, false);
     if (itemErr) {
       setCreateError(itemErr);
       return;
@@ -811,11 +1075,20 @@ const Orders = () => {
     try {
       setCreating(true);
 
-      const subtotal = calcSubtotal(items);
+      // expand "auto" items into multiple "carton" rows
+      const expandedItems = expandAutoItems(items, cartons, products);
+
+      if (expandedItems.length > 25) {
+        throw new Error(
+          "You cannot have more than 25 items in a single order."
+        );
+      }
+
+      const subtotal = calcSubtotal(expandedItems);
       const deliveryFee = Number(customer.deliveryFee || 0);
       const total_amount = subtotal + deliveryFee;
 
-      const orderItemsPayload = items.map((r) => ({
+      const orderItemsPayload = expandedItems.map((r) => ({
         mode: r.mode,
         carton_id: r.carton_id ? Number(r.carton_id) : null,
         product_id: r.product_id || null,
@@ -848,7 +1121,7 @@ const Orders = () => {
         return;
       }
 
-      // inventory adjustments for loose items
+      // inventory adjustments for loose items (auto expanded cartons remain cartons)
       const looseAdjustments = {};
       orderItemsPayload.forEach((it) => {
         if (it.mode === "loose" && it.carton_id) {
@@ -971,8 +1244,7 @@ const Orders = () => {
       return;
     }
 
-
-    const itemErr = validateItems(editItems);
+    const itemErr = validateItems(editItems, true);
     if (itemErr) {
       setEditError(itemErr);
       return;
@@ -981,11 +1253,20 @@ const Orders = () => {
     try {
       setSavingEdit(true);
 
-      const subtotal = calcSubtotal(editItems);
+      // expand "auto" items into multiple "carton" rows
+      const expandedItems = expandAutoItems(editItems, cartons, products);
+
+      if (expandedItems.length > 25) {
+        throw new Error(
+          "You cannot have more than 25 items in a single order."
+        );
+      }
+
+      const subtotal = calcSubtotal(expandedItems);
       const deliveryFee = Number(editCustomer.deliveryFee || 0);
       const total_amount = subtotal + deliveryFee;
 
-      const newItemsPayload = editItems.map((r) => ({
+      const newItemsPayload = expandedItems.map((r) => ({
         mode: r.mode,
         carton_id: r.carton_id ? Number(r.carton_id) : null,
         product_id: r.product_id || null,
@@ -1522,7 +1803,10 @@ const Orders = () => {
                   </button>
                 </div>
 
-                <div className="modal-body">
+                <div
+                  className="modal-body"
+                  style={{ maxHeight: "70vh", overflowY: "auto" }}
+                >
                   <Row>
                     <Col md={4} className="mb-2">
                       <Form.Label>Customer Name *</Form.Label>
@@ -1543,7 +1827,7 @@ const Orders = () => {
                       />
                     </Col>
                     <Col md={4} className="mb-2">
-                      <Form.Label>Phone</Form.Label>
+                      <Form.Label>Phone *</Form.Label>
                       <Form.Control
                         type="text"
                         name="phone"
@@ -1555,7 +1839,7 @@ const Orders = () => {
 
                   <Row>
                     <Col md={8} className="mb-2">
-                      <Form.Label>Delivery Address</Form.Label>
+                      <Form.Label>Delivery Address *</Form.Label>
                       <Form.Control
                         as="textarea"
                         rows={2}
@@ -1597,6 +1881,7 @@ const Orders = () => {
                     cartons={cartons}
                     getCartonLabel={getCartonLabel}
                     getUnitPriceForProduct={getUnitPriceForProduct}
+                    isEdit={true} 
                   />
 
                   <Row className="mt-3">

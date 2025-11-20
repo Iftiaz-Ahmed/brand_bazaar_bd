@@ -39,6 +39,11 @@
     -ms-transform: rotate(360deg); } }
 
 /*           Font Smoothing      */
+
+.text-purple {
+    color: #9368e9 !important; /* nice purple */
+  }
+  
 body,
 h1, .h1,
 h2, .h2,
@@ -2560,6 +2565,11 @@ body > .navbar-collapse[data-color="purple"]:after {
     padding-left: 15px; }
   .card form [class*="col-"]:last-child {
     padding-right: 15px; } }
+  
+  .text-purple {
+    color: #9368e9 !important; /* nice purple */
+  }
+
 
 /*          Changes for small display      */
 @media (max-width: 991px) {
@@ -3001,3 +3011,5 @@ body > .navbar-collapse[data-color="purple"]:after {
     overflow-y: hidden;
     -ms-overflow-style: -ms-autohiding-scrollbar;
     -webkit-overflow-scrolling: touch; } }
+
+

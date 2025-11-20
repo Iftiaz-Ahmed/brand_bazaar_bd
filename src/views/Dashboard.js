@@ -434,6 +434,13 @@ function Dashboard() {
   // ---------- RENDER ----------
   return (
     <>
+    <style>
+      {`
+        .text-purple {
+          color: #9b59b6 !important;
+        }
+      `}
+    </style>
       <Container fluid>
         {/* TOP STATS */}
         <Row>
@@ -722,11 +729,13 @@ function Dashboard() {
                       <div key={status}>
                         <i
                           className={`fas fa-circle ${
-                            idx % 3 === 0
-                              ? "text-info"
-                              : idx % 3 === 1
-                              ? "text-danger"
-                              : "text-warning"
+                            idx % 4 === 0
+                              ? "text-info"      // blue
+                              : idx % 4 === 1
+                              ? "text-danger"    // red
+                              : idx % 4 === 2
+                              ? "text-warning"   // yellow
+                              : "text-purple"    // purple
                           }`}
                         ></i>{" "}
                         {status} – {formatCurrency(statusRevenueMap[status])}
