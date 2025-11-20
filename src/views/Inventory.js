@@ -57,6 +57,8 @@ const Inventory = () => {
     received_at: getNowForDatetimeLocal(),
     supplier_id: "",
     is_open: false,
+    // 🔹 NEW: how many cartons to create at once
+    total_cartons: 1,
   });
 
   // product search (add)
@@ -345,10 +347,9 @@ const Inventory = () => {
         </html>
     `);
     printWindow.document.close();
-    }
+  }
 
-
-  // ADD CARTON
+  // ADD CARTON(S)
   const handleAddCarton = async (e) => {
     e.preventDefault();
     setAddError("");
@@ -356,6 +357,9 @@ const Inventory = () => {
     if (!newCarton.product_id) return setAddError("Please select a product.");
     if (!newCarton.units_remaining)
       return setAddError("Please enter units remaining.");
+    if (newCarton.total_cartons === "" || newCarton.total_cartons === null) {
+      return setAddError("Please enter total cartons.");
+    }
 
     try {
       setAdding(true);
@@ -365,8 +369,9 @@ const Inventory = () => {
         : new Date().toISOString();
 
       const units = Number(newCarton.units_remaining);
+      const totalCartons = Math.max(1, Number(newCarton.total_cartons) || 1);
 
-      const insertPayload = {
+      const basePayload = {
         product_id: Number(newCarton.product_id),
         status: newCarton.status || "received",
         units_remaining: units,
@@ -377,30 +382,43 @@ const Inventory = () => {
         is_open: false,
       };
 
-      const { data: insertedCarton, error: insertError } = await supabase
+      // 🔹 Create N identical cartons in one go
+      const insertPayloads = Array.from({ length: totalCartons }, () => ({
+        ...basePayload,
+      }));
+
+      const { data: insertedCartons, error: insertError } = await supabase
         .from("cartons")
-        .insert([insertPayload])
-        .select()
-        .single();
+        .insert(insertPayloads)
+        .select();
 
       if (insertError) {
         console.error("Supabase insert error (carton):", insertError);
-        setAddError(insertError.message || "Failed to add carton.");
+        setAddError(insertError.message || "Failed to add carton(s).");
         return;
       }
 
-      const product = products.find((p) => p.id === insertedCarton.product_id);
-      const finalCarton = await createOrUpdateCartonLabel(
-        insertedCarton,
-        units,
-        product
+      const product = products.find(
+        (p) => p.id === Number(newCarton.product_id)
       );
 
-      // prepend and keep sorted (id desc)
+      // 🔹 Generate labels for all newly created cartons
+      const finalCartons = [];
+      for (const c of insertedCartons || []) {
+        const finalCarton = await createOrUpdateCartonLabel(
+          c,
+          units,
+          product
+        );
+        finalCartons.push(finalCarton);
+      }
+
+      // prepend new cartons and keep sorted (id desc)
       setCartons((prev) =>
-        [finalCarton, ...prev].sort((a, b) => b.id - a.id)
+        [...finalCartons, ...prev].sort((a, b) => b.id - a.id)
       );
 
+      // reset form
       setNewCarton({
         product_id: "",
         status: "received",
@@ -408,6 +426,7 @@ const Inventory = () => {
         received_at: getNowForDatetimeLocal(),
         supplier_id: "",
         is_open: false,
+        total_cartons: 1,
       });
       setProductSearch("");
       setShowProductDropdown(false);
@@ -767,6 +786,19 @@ const Inventory = () => {
                         </Form.Control>
                       </Col>
 
+                      {/* 🔹 NEW: Total Cartons */}
+                      <Col md={2} className="mb-2">
+                        <Form.Label>Total Cartons</Form.Label>
+                        <Form.Control
+                          type="number"
+                          name="total_cartons"
+                          min={1}
+                          value={newCarton.total_cartons}
+                          onChange={handleNewCartonChange}
+                          placeholder="e.g. 40"
+                        />
+                      </Col>
+
                       <Col
                         md={{ span: 4, offset: 4 }}
                         className="mb-2 d-flex justify-content-end align-items-end"
@@ -812,55 +844,67 @@ const Inventory = () => {
                       <tr key={carton.id}>
                         <td>Carton {carton.id}</td>
                         <td>
-                        {carton.qr_code_url ? (
-                            <div style={{ display: "flex", flexDirection: "column", alignItems: "center" }}>
+                          {carton.qr_code_url ? (
                             <div
-                                onClick={() => setSelectedImage(carton.qr_code_url)}
-                                style={{
-                                width: "140px",
-                                height: "140px",
-                                borderRadius: "12px",
-                                overflow: "hidden",
-                                boxShadow: "0 4px 12px rgba(0,0,0,0.1)",
-                                background: "#fff",
-                                cursor: "zoom-in",
-                                }}
+                              style={{
+                                display: "flex",
+                                flexDirection: "column",
+                                alignItems: "center",
+                              }}
                             >
-                                <img
-                                src={carton.qr_code_url}
-                                alt={`Carton ${carton.id} Label`}
+                              <div
+                                onClick={() =>
+                                  setSelectedImage(carton.qr_code_url)
+                                }
                                 style={{
+                                  width: "140px",
+                                  height: "140px",
+                                  borderRadius: "12px",
+                                  overflow: "hidden",
+                                  boxShadow: "0 4px 12px rgba(0,0,0,0.1)",
+                                  background: "#fff",
+                                  cursor: "zoom-in",
+                                }}
+                              >
+                                <img
+                                  src={carton.qr_code_url}
+                                  alt={`Carton ${carton.id} Label`}
+                                  style={{
                                     width: "110%",
                                     height: "110%",
                                     objectFit: "cover",
-                                    objectPosition: "right center"
-                                }}
+                                    objectPosition: "right center",
+                                  }}
                                 />
-                            </div>
+                              </div>
 
-                            {/* 🔹 Print button under the label */}
-                            <Button
+                              {/* 🔹 Print button under the label */}
+                              <Button
                                 size="sm"
                                 variant="outline-info"
                                 className="mt-2"
                                 onClick={(e) => {
-                                e.stopPropagation(); // don't trigger zoom
-                                handlePrintLabel(carton.qr_code_url);
+                                  e.stopPropagation(); // don't trigger zoom
+                                  handlePrintLabel(carton.qr_code_url);
                                 }}
-                            >
+                              >
                                 Print Label
-                            </Button>
+                              </Button>
                             </div>
-                        ) : (
+                          ) : (
                             <Button
-                            size="sm"
-                            variant="secondary"
-                            onClick={() => handleGenerateQrForCarton(carton)}
-                            disabled={qrBusyId === carton.id}
+                              size="sm"
+                              variant="secondary"
+                              onClick={() =>
+                                handleGenerateQrForCarton(carton)
+                              }
+                              disabled={qrBusyId === carton.id}
                             >
-                            {qrBusyId === carton.id ? "Generating..." : "Get QR Code"}
+                              {qrBusyId === carton.id
+                                ? "Generating..."
+                                : "Get QR Code"}
                             </Button>
-                        )}
+                          )}
                         </td>
                         <td>{getProductName(carton.product_id)}</td>
                         <td>{carton.units_remaining}</td>

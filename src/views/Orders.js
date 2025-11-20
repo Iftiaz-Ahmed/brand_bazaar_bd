@@ -105,13 +105,15 @@ async function generateInvoiceImage(order, items, products) {
     ctx.fillText(`Date: ${dt.toLocaleString()}`, padding, y);
     y += 24;
   }
-  ctx.fillText(`Phone: +8801780020000`, padding, y);
+  ctx.fillText(`Address: Motijheel, Dhaka, Bangladesh`, padding, y);
+  y += 24;
+  ctx.fillText(`Phone: +8801711276418`, padding, y);
   y += 40;
 
   ctx.font = "20px Arial";
   ctx.fillText("Bill To:", padding, y);
   y += 24;
-  ctx.font = "16px Arial";
+  ctx.font = "18px Arial";
   wrapText(ctx, `${order.customer_name || ""}`, padding, y, 400, 20);
   y += 20;
   if (order.customer_email) {
@@ -148,7 +150,7 @@ async function generateInvoiceImage(order, items, products) {
     y += 20;
   }
 
-  // table header
+  // table header (no Cartons column here)
   y += 30;
   const colX = {
     product: padding,
@@ -158,7 +160,7 @@ async function generateInvoiceImage(order, items, products) {
   };
 
   ctx.font = "bold 16px Arial";
-  ctx.fillText("Product (Carton)", colX.product, y);
+  ctx.fillText("Product", colX.product, y);
   ctx.fillText("Qty", colX.qty, y);
   ctx.fillText("Unit Price", colX.unit, y);
   ctx.fillText("Line Total", colX.total, y);
@@ -176,13 +178,14 @@ async function generateInvoiceImage(order, items, products) {
   (items || []).forEach((item) => {
     const product = products.find((p) => p.id === item.product_id);
     const productName = product?.name || "Unknown Product";
-    const cartonLabel = item.carton_id ? `Carton ${item.carton_id}` : "Loose";
 
-    const text = `${productName} (${cartonLabel})`;
-
+    const text = `${productName}`;
     const lineHeight = 20;
+
+    // Product text only
     y = wrapText(ctx, text, colX.product, y, 380, lineHeight);
 
+    // Qty / prices
     ctx.fillText(String(item.quantity || 0), colX.qty, y);
     ctx.fillText(`৳${(item.unit_price || 0).toFixed(2)}`, colX.unit, y);
     ctx.fillText(`৳${(item.line_total || 0).toFixed(2)}`, colX.total, y);
@@ -270,8 +273,7 @@ async function createOrUpdateInvoice(orderRow, items, products) {
 }
 
 /**
- * 🔹 Moved OUTSIDE Orders component so it doesn't remount every render.
- * This keeps input focus stable.
+ * 🔹 Order items editor (cartons / loose) – kept outside main component
  */
 const OrderItemsEditor = ({
   items,
@@ -429,14 +431,33 @@ const OrderItemsEditor = ({
           ) : (
             items.map((row) => {
               const mode = row.mode || "carton";
-              const cartonList = availableCartonsFor(mode);
-              const carton = cartonList.find(
-                (c) => c.id === Number(row.carton_id)
-              );
+
+              // 1) Base list: only available cartons for this mode
+              const baseCartonList = availableCartonsFor(mode);
+
+              // 2) The previously selected carton (even if booked now)
+              const selectedCarton =
+                row.carton_id != null && row.carton_id !== ""
+                  ? cartons.find((c) => c.id === Number(row.carton_id))
+                  : null;
+
+              // 3) Ensure selected carton is present so it shows in dropdown
+              let cartonList = baseCartonList;
+              if (
+                selectedCarton &&
+                !baseCartonList.some((c) => c.id === selectedCarton.id)
+              ) {
+                cartonList = [selectedCarton, ...baseCartonList];
+              }
+
+              // Use cartonList to compute maxQty for loose
+              const currentCarton =
+                cartonList.find((c) => c.id === Number(row.carton_id)) ||
+                selectedCarton;
 
               const maxQty =
-                carton && mode === "loose"
-                  ? Number(carton.units_remaining || 0)
+                currentCarton && mode === "loose"
+                  ? Number(currentCarton.units_remaining || 0)
                   : undefined;
 
               return (
@@ -631,6 +652,19 @@ const Orders = () => {
     return p?.unit_selling_price ? Number(p.unit_selling_price) : 0;
   };
 
+  // 🔹 NEW: helper to show carton IDs in orders list
+  const getOrderCartonList = (order) => {
+    const itemsFromDb = Array.isArray(order.items) ? order.items : [];
+    const ids = [
+      ...new Set(
+        itemsFromDb
+          .filter((it) => it.carton_id)
+          .map((it) => Number(it.carton_id))
+      ),
+    ];
+    return ids.length ? ids.join(", ") : "";
+  };
+
   // ---------- shared totals helpers ----------
 
   const calcSubtotal = (rows) =>
@@ -752,10 +786,21 @@ const Orders = () => {
     e.preventDefault();
     setCreateError("");
 
-    if (!customer.name) {
+    if (!customer.name?.trim()) {
       setCreateError("Customer name is required.");
       return;
     }
+
+    if (!customer.phone?.trim()) {
+      setCreateError("Customer phone is required.");
+      return;
+    }
+
+    if (!customer.address?.trim()) {
+      setCreateError("Delivery address is required.");
+      return;
+    }
+
 
     const itemErr = validateItems(items);
     if (itemErr) {
@@ -911,10 +956,21 @@ const Orders = () => {
     if (!editingOrder) return;
     setEditError("");
 
-    if (!editCustomer.name) {
+    if (!editCustomer.name?.trim()) {
       setEditError("Customer name is required.");
       return;
     }
+
+    if (!editCustomer.phone?.trim()) {
+      setEditError("Customer phone is required.");
+      return;
+    }
+
+    if (!editCustomer.address?.trim()) {
+      setEditError("Delivery address is required.");
+      return;
+    }
+
 
     const itemErr = validateItems(editItems);
     if (itemErr) {
@@ -1208,7 +1264,7 @@ const Orders = () => {
                         />
                       </Col>
                       <Col md={4} className="mb-2">
-                        <Form.Label>Phone</Form.Label>
+                        <Form.Label>Phone *</Form.Label>
                         <Form.Control
                           type="text"
                           name="phone"
@@ -1220,7 +1276,7 @@ const Orders = () => {
 
                     <Row>
                       <Col md={8} className="mb-2">
-                        <Form.Label>Delivery Address</Form.Label>
+                        <Form.Label>Delivery Address *</Form.Label>
                         <Form.Control
                           as="textarea"
                           rows={2}
@@ -1312,6 +1368,7 @@ const Orders = () => {
                     <th className="border-0">Customer</th>
                     <th className="border-0">Contact</th>
                     <th className="border-0">Status</th>
+                    <th className="border-0">Cartons</th>
                     <th className="border-0">Total</th>
                     <th className="border-0">Invoice</th>
                     <th className="border-0">Created At</th>
@@ -1320,100 +1377,106 @@ const Orders = () => {
                 </thead>
                 <tbody>
                   {orders.length > 0 ? (
-                    orders.map((order) => (
-                      <tr key={order.id}>
-                        <td>#{order.id}</td>
-                        <td>
-                          <div>{order.customer_name}</div>
-                          <small className="text-muted">
-                            {order.delivery_address}
-                          </small>
-                        </td>
-                        <td>
-                          <div>{order.customer_phone}</div>
-                          <small className="text-muted">
-                            {order.customer_email}
-                          </small>
-                        </td>
-                        <td>{order.status}</td>
-                        <td>৳{Number(order.total_amount || 0).toFixed(2)}</td>
-                        <td>
-                          {order.invoice_url ? (
-                            <div style={{ textAlign: "center" }}>
-                              <div
-                                onClick={() =>
-                                  setSelectedInvoiceImage(order.invoice_url)
-                                }
-                                style={{
-                                  width: "140px",
-                                  height: "140px",
-                                  borderRadius: "12px",
-                                  overflow: "hidden",
-                                  boxShadow:
-                                    "0 4px 12px rgba(0,0,0,0.1)",
-                                  background: "#fff",
-                                  cursor: "zoom-in",
-                                  margin: "0 auto 6px",
-                                }}
-                              >
-                                <img
-                                  src={order.invoice_url}
-                                  alt={`Invoice #${order.id}`}
+                    orders.map((order) => {
+                      const cartonList = getOrderCartonList(order);
+                      return (
+                        <tr key={order.id}>
+                          <td>#{order.id}</td>
+                          <td>
+                            <div>{order.customer_name}</div>
+                            <small className="text-muted">
+                              {order.delivery_address}
+                            </small>
+                          </td>
+                          <td>
+                            <div>{order.customer_phone}</div>
+                            <small className="text-muted">
+                              {order.customer_email}
+                            </small>
+                          </td>
+                          <td>{order.status}</td>
+                          <td>{cartonList || "-"}</td>
+                          <td>
+                            ৳{Number(order.total_amount || 0).toFixed(2)}
+                          </td>
+                          <td>
+                            {order.invoice_url ? (
+                              <div style={{ textAlign: "center" }}>
+                                <div
+                                  onClick={() =>
+                                    setSelectedInvoiceImage(order.invoice_url)
+                                  }
                                   style={{
-                                    width: "100%",
-                                    height: "100%",
-                                    objectFit: "cover",
+                                    width: "140px",
+                                    height: "140px",
+                                    borderRadius: "12px",
+                                    overflow: "hidden",
+                                    boxShadow:
+                                      "0 4px 12px rgba(0,0,0,0.1)",
+                                    background: "#fff",
+                                    cursor: "zoom-in",
+                                    margin: "0 auto 6px",
                                   }}
-                                />
+                                >
+                                  <img
+                                    src={order.invoice_url}
+                                    alt={`Invoice #${order.id}`}
+                                    style={{
+                                      width: "100%",
+                                      height: "100%",
+                                      objectFit: "cover",
+                                    }}
+                                  />
+                                </div>
+                                <Button
+                                  size="sm"
+                                  variant="outline-secondary"
+                                  onClick={() => handlePrintInvoice(order)}
+                                >
+                                  Print Invoice
+                                </Button>
                               </div>
+                            ) : (
                               <Button
                                 size="sm"
-                                variant="outline-secondary"
-                                onClick={() => handlePrintInvoice(order)}
+                                variant="secondary"
+                                onClick={() => handleGenerateInvoice(order)}
                               >
-                                Print Invoice
+                                Get Invoice
+                              </Button>
+                            )}
+                          </td>
+                          <td>
+                            {order.created_at
+                              ? formatDate(order.created_at)
+                              : "-"}
+                          </td>
+                          <td className="align-middle">
+                            <div className="d-flex align-items-center gap-2">
+                              <Button
+                                variant="link"
+                                size="sm"
+                                className="p-0 text-warning"
+                                onClick={() => openEditModal(order)}
+                              >
+                                <i className="fa fa-edit" />
+                              </Button>
+                              <Button
+                                variant="link"
+                                size="sm"
+                                className="p-0 text-danger ml-2"
+                                onClick={() => handleDeleteOrder(order)}
+                              >
+                                <i className="fa fa-trash" />
                               </Button>
                             </div>
-                          ) : (
-                            <Button
-                              size="sm"
-                              variant="secondary"
-                              onClick={() => handleGenerateInvoice(order)}
-                            >
-                              Get Invoice
-                            </Button>
-                          )}
-                        </td>
-                        <td>
-                          {order.created_at
-                            ? formatDate(order.created_at)
-                            : "-"}
-                        </td>
-                        <td className="align-middle">
-                          <div className="d-flex align-items-center gap-2">
-                            <Button
-                              variant="link"
-                              size="sm"
-                              className="p-0 text-warning"
-                              onClick={() => openEditModal(order)}
-                            >
-                              <i className="fa fa-edit" />
-                            </Button>
-                            <Button
-                              variant="link"
-                              size="sm"
-                              className="p-0 text-danger ml-2"
-                              onClick={() => handleDeleteOrder(order)}
-                            >
-                              <i className="fa fa-trash" />
-                            </Button>
-                          </div>
-                        </td>
-                      </tr>
-                    ))
+                          </td>
+                        </tr>
+                      );
+                    })
                   ) : (
                     <tr>
-                      <td colSpan={8} className="text-center text-danger py-3">
+                      <td colSpan={9} className="text-center text-danger py-3">
                         No orders have been created yet.
                       </td>
                     </tr>
