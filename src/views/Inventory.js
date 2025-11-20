@@ -261,6 +261,11 @@ const Inventory = () => {
     );
     currentY += 48;
 
+    // Carton ID
+    ctx.font = "20px Arial";
+    ctx.fillText(`Carton ID #: ${carton.id}`, paddingLeft, currentY);
+    currentY += 24;
+
     // Units line
     ctx.font = "20px Arial";
     ctx.fillText(`Units in Carton: ${unitsRemaining}`, paddingLeft, currentY);
